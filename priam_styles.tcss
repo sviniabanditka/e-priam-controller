@@ -1,0 +1,73 @@
+Screen {
+    layout: vertical;
+}
+
+#main {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#left {
+    width: 40%;
+    min-width: 36;
+    border-right: solid $primary;
+    padding: 0 1;
+}
+
+#status_panel {
+    height: auto;
+    border: round $primary;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+#controls_panel {
+    height: auto;
+    border: round $primary;
+    padding: 0 1;
+}
+
+.section_title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+.status_line {
+    height: 1;
+}
+
+#log_panel {
+    width: 1fr;
+    padding: 0 1;
+    border: round $primary;
+    height: 1fr;
+}
+
+ModalScreen {
+    align: center middle;
+}
+
+#dialog {
+    width: 60;
+    height: auto;
+    padding: 1 2;
+    background: $surface;
+    border: thick $primary;
+}
+
+#dialog_title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+#dialog_buttons {
+    height: auto;
+    align: right middle;
+    margin-top: 1;
+}
+
+#dialog_buttons Button {
+    margin-left: 1;
+}
