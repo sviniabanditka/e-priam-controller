@@ -252,3 +252,40 @@ MIT (or whatever you prefer — set this before publishing).
 
 "Cybex" and "e-Priam" are trademarks of their respective owners. This
 project is independent and unofficial.
+
+---
+
+## Web / PWA version (`docs/`)
+
+A dependency-free Web Bluetooth port of the same controller: `docs/index.html`
+(UI + client), `docs/priam_ble.js` (protocol, mirrors `priam_ble.py`),
+`manifest.json` + `sw.js` for installation. Serve the folder over HTTPS
+(GitHub Pages works) and open it in a browser with Web Bluetooth:
+
+- **Android**: Chrome / Edge / Samsung Internet, installable as PWA.
+- **iOS**: Safari has no Web Bluetooth. Use the
+  [Bluefy](https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055) browser.
+- **Desktop**: Chrome / Edge.
+
+Local check without a stroller: `python3 -m http.server -d docs 8765`, then
+`http://localhost:8765`. Protocol self-test: `node docs/test.mjs`.
+
+Web Bluetooth needs the **GATT service UUID** containing the three
+characteristics; bleak never needed it, so it is guessed at runtime
+(`SERVICE_UUID_CANDIDATES`). If connecting fails with "no service with ROCKING
+characteristic", discover it once next to the stroller and paste it into
+*Advanced → Service UUID*:
+
+```bash
+python3 -c "
+import asyncio; from bleak import BleakClient; from priam_ble import find_stroller
+async def m():
+    d = await find_stroller()
+    async with BleakClient(d.address) as c:
+        for s in c.services: print(s.uuid, [ch.uuid for ch in s.characteristics])
+asyncio.run(m())"
+```
+
+Limitations vs. the TUI: the page must stay in the foreground (Screen Wake
+Lock is requested while connected); auto-renew stops when the browser freezes
+the tab. "Continue on disconnect" keeps the stroller rocking after a link drop.

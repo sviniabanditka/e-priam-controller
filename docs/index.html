@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>e-Priam</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --line:#262a33; --fg:#e6e8ee; --dim:#8a90a0;
+          --ok:#4ade80; --warn:#fbbf24; --err:#f87171; --acc:#60a5fa; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.4 -apple-system,system-ui,sans-serif;
+         padding:max(12px,env(safe-area-inset-top)) 16px max(12px,env(safe-area-inset-bottom)); }
+  h1 { font-size:18px; margin:0; display:flex; justify-content:space-between; align-items:center; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:12px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; font-variant-numeric:tabular-nums; }
+  .grid b { color:var(--dim); font-weight:500; }
+  .row { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center; }
+  button { flex:1; min-height:44px; border:1px solid var(--line); border-radius:10px; background:#222733;
+           color:var(--fg); font:inherit; font-weight:600; }
+  button:disabled { opacity:.4; }
+  button.on { background:var(--acc); color:#0b1020; border-color:var(--acc); }
+  button.primary { background:var(--ok); color:#06220f; border-color:var(--ok); }
+  button.danger { background:var(--err); color:#2a0a0a; border-color:var(--err); }
+  input[type=number] { width:90px; min-height:44px; border:1px solid var(--line); border-radius:10px;
+           background:#222733; color:var(--fg); font:inherit; padding:0 10px; }
+  input[type=text] { flex:1; min-height:36px; border:1px solid var(--line); border-radius:8px;
+           background:#222733; color:var(--fg); font:13px monospace; padding:0 8px; }
+  label.chk { display:flex; align-items:center; gap:8px; flex:1; min-height:44px; }
+  label.chk input { width:22px; height:22px; }
+  #log { font:12px/1.5 ui-monospace,monospace; max-height:40vh; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)} .dim{color:var(--dim)}
+  details summary { color:var(--dim); font-size:13px; cursor:pointer; }
+</style>
+</head>
+<body>
+<h1>e-Priam <span id="conn" class="dim">disconnected</span></h1>
+
+<div class="panel">
+  <div class="grid">
+    <b>Battery</b><span id="bat">—</span>
+    <b>Rocking</b><span id="rock">—</span>
+    <b>Time</b><span id="time">—</span>
+    <b>Error</b><span id="errf">—</span>
+    <b>Drive</b><span id="drive">—</span>
+    <b>Auto-renew</b><span id="renew">off</span>
+  </div>
+  <div class="row">
+    <button id="btnConnect" class="primary">Connect</button>
+    <button id="btnDisconnect" disabled>Disconnect</button>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="row" id="intensity">
+    <button data-i="1">HIGH</button><button data-i="2" class="on">MED</button><button data-i="3">LOW</button>
+  </div>
+  <div class="row">
+    <input id="dur" type="number" inputmode="numeric" min="1" max="500" value="30"> <span class="dim">min (1–500)</span>
+  </div>
+  <div class="row">
+    <label class="chk"><input id="cont" type="checkbox" checked> continue on disconnect</label>
+    <label class="chk"><input id="auto" type="checkbox"> auto-renew</label>
+  </div>
+  <div class="row">
+    <button id="btnStart" class="primary" disabled>Start rocking</button>
+    <button id="btnStop" class="danger" disabled>Stop</button>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="row" id="driveBtns">
+    <button data-d="1" disabled>ECO</button><button data-d="2" disabled>TOUR</button><button data-d="3" disabled>BOOST</button>
+  </div>
+</div>
+
+<div class="panel">
+  <details><summary>Service UUID (advanced)</summary>
+    <div class="row"><input id="svc" type="text" placeholder="auto (try candidates)"></div>
+  </details>
+  <div id="log" style="margin-top:8px"></div>
+</div>
+
+<script type="module">
+import {
+  STATUS_UUID, DRIVE_UUID, ROCKING_UUID, SERVICE_UUID_CANDIDATES,
+  INTENSITY_NAMES, DRIVE_NAMES, hex, parseBattery, parseRocking, buildRockingCmd, buildDriveCmd,
+} from "./priam_ble.js";
+
+const $ = (id) => document.getElementById(id);
+const AUTO_RENEW_THRESHOLD_SEC = 60;
+
+// ---------- log ----------
+function log(msg, cls = "") {
+  const t = new Date().toTimeString().slice(0, 8);
+  const el = $("log");
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = `${t}  ${msg}`;
+  el.prepend(line);
+  while (el.childElementCount > 300) el.lastChild.remove();
+}
+
+// ---------- client (port of PriamClient) ----------
+let device = null, server = null, chars = {};
+let renewPreset = null, renewInFlight = false;
+let lastIntensity = null, lastSetTime = null, lastError = "none", lastBatBucket = null;
+let wakeLock = null;
+
+const connected = () => Boolean(server?.connected);
+
+function setConn(state) {
+  $("conn").textContent = state;
+  $("conn").className = state === "connected" ? "ok" : state === "searching" ? "warn" : "dim";
+  const on = state === "connected";
+  $("btnConnect").disabled = on || state === "searching";
+  $("btnDisconnect").disabled = !on;
+  for (const b of document.querySelectorAll("#btnStart,#btnStop,#driveBtns button")) b.disabled = !on;
+}
+
+function handleBattery(dv) {
+  const st = parseBattery(new Uint8Array(dv.buffer));
+  $("bat").textContent = `${st.percent}% (${st.mv} mV)`;
+  const bucket = Math.floor(st.percent / 5) * 5;
+  if (lastBatBucket !== bucket) { lastBatBucket = bucket; log(`🔋 Battery: ${st.percent}% (${st.mv} mV)`); }
+}
+
+function handleDrive(dv) {
+  const d = new Uint8Array(dv.buffer);
+  if (d.length && DRIVE_NAMES[d[0]]) {
+    $("drive").textContent = DRIVE_NAMES[d[0]];
+    for (const b of document.querySelectorAll("#driveBtns button")) b.classList.toggle("on", +b.dataset.d === d[0]);
+  }
+  log(`📡 Drive notify: ${hex(d)}`, "dim");
+}
+
+function handleRocking(dv) {
+  const d = new Uint8Array(dv.buffer);
+  const st = parseRocking(d);
+  if (!st) { log(`⚠ Rocking short pkt: ${hex(d)}`, "warn"); return; }
+  $("rock").textContent = st.intensityName + (st.disc ? " · cont" : "");
+  $("time").textContent = st.intensity ? `${st.timeLeftMin} / ${st.setTimeMin} min` : "—";
+  $("errf").textContent = st.error;
+  $("errf").className = st.error === "none" ? "" : "err";
+  maybeAutoRenew(st);
+  if (lastIntensity !== null && lastIntensity !== st.intensity)
+    log(`🌀 Intensity changed: ${INTENSITY_NAMES[lastIntensity] ?? "?"} → ${st.intensityName}`);
+  lastIntensity = st.intensity;
+  if (lastSetTime !== null && lastSetTime !== st.setTimeMin)
+    log(`⏱ Set time changed: ${lastSetTime} → ${st.setTimeMin} min`);
+  lastSetTime = st.setTimeMin;
+  if (st.error !== "none" && st.error !== lastError) log(`⚠ Rocking error: ${st.error}`, "err");
+  lastError = st.error;
+}
+
+function setRenew(preset) {
+  const was = Boolean(renewPreset);
+  renewPreset = preset; if (!preset) renewInFlight = false;
+  if (was !== Boolean(preset)) $("renew").textContent = preset ? "ON" : "off";
+}
+
+function maybeAutoRenew(st) {
+  if (!renewPreset) return;
+  if (st.intensity === 0) { setRenew(null); log("🔁 Auto-renew disabled (rocking stopped)"); return; }
+  if (st.timeLeftSec > AUTO_RENEW_THRESHOLD_SEC) { renewInFlight = false; return; }
+  if (renewInFlight) return;
+  renewInFlight = true;
+  log(`🔁 Auto-renew triggered (≤${AUTO_RENEW_THRESHOLD_SEC}s left)`);
+  writeRocking(...renewPreset, true);
+}
+
+async function writeRocking(intensity, durationMin, cont, autoRenew = false) {
+  if (!connected()) { log("⚠ Not connected — command ignored", "warn"); return; }
+  let cmd;
+  try { cmd = buildRockingCmd(intensity, durationMin, cont); } catch (e) { log(`⚠ ${e.message}`, "err"); return; }
+  try { await chars.rocking.writeValue(cmd); } catch (e) { log(`[ERROR] write rocking: ${e.message}`, "err"); return; }
+  setRenew(autoRenew && intensity ? [intensity, durationMin, cont] : null);
+  log(intensity === 0 ? `⏹ Rocking stopped  hex=${hex(cmd)}`
+    : `🌀 Rocking: ${INTENSITY_NAMES[intensity]} ${durationMin} min cont=${cont}${autoRenew ? " auto-renew" : ""}  hex=${hex(cmd)}`);
+}
+
+async function writeDrive(level) {
+  if (!connected()) { log("⚠ Not connected — command ignored", "warn"); return; }
+  const cmd = buildDriveCmd(level);
+  try { await chars.drive.writeValue(cmd); } catch (e) { log(`[ERROR] write drive: ${e.message}`, "err"); return; }
+  log(`🚗 Drive: ${DRIVE_NAMES[level]}  hex=${hex(cmd)}`);
+}
+
+async function findService(srv) {
+  const custom = $("svc").value.trim();
+  const uuids = custom ? [custom] : SERVICE_UUID_CANDIDATES;
+  for (const u of uuids) {
+    try {
+      const s = await srv.getPrimaryService(u);
+      await s.getCharacteristic(ROCKING_UUID);
+      return s;
+    } catch { /* try next */ }
+  }
+  throw new Error(`no service with ROCKING characteristic among: ${uuids.join(", ")}. Run the bleak discovery one-liner and paste the service UUID in Advanced.`);
+}
+
+async function connect() {
+  if (!navigator.bluetooth) { log("❌ Web Bluetooth not available. Use Bluefy (iOS) or Chrome (Android/desktop).", "err"); return; }
+  setConn("searching");
+  lastIntensity = lastSetTime = lastBatBucket = null; lastError = "none";
+  try {
+    log("🔍 Searching for stroller…");
+    const custom = $("svc").value.trim();
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: custom ? [custom, ...SERVICE_UUID_CANDIDATES] : SERVICE_UUID_CANDIDATES,
+    });
+    device.addEventListener("gattserverdisconnected", onDisconnected);
+    log(`📡 Connecting to ${device.name || "?"}…`);
+    server = await device.gatt.connect();
+    const svc = await findService(server);
+    log(`✅ Connected (service ${svc.uuid})`, "ok");
+    $("svc").value = svc.uuid; localStorage.setItem("svc", svc.uuid);
+    chars = {
+      status: await svc.getCharacteristic(STATUS_UUID),
+      drive: await svc.getCharacteristic(DRIVE_UUID),
+      rocking: await svc.getCharacteristic(ROCKING_UUID),
+    };
+    const sub = async (ch, handler) => {
+      ch.addEventListener("characteristicvaluechanged", (e) => handler(e.target.value));
+      await ch.startNotifications();
+    };
+    await sub(chars.status, handleBattery);
+    await sub(chars.drive, handleDrive);
+    await sub(chars.rocking, handleRocking);
+    log("📡 Subscribed to notifications");
+    // Notify fires only on change; read once so the panel fills in now.
+    for (const [ch, h, label] of [[chars.status, handleBattery, "STATUS"], [chars.drive, handleDrive, "DRIVE"], [chars.rocking, handleRocking, "ROCKING"]]) {
+      try { h(await ch.readValue()); } catch (e) { log(`⚠ initial read ${label} failed: ${e.message}`, "warn"); }
+    }
+    setConn("connected");
+    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch { /* optional */ }
+  } catch (e) {
+    log(`[ERROR] ${e.message}`, "err");
+    try { device?.gatt?.disconnect(); } catch {}
+    server = null; setConn("disconnected");
+  }
+}
+
+function onDisconnected() {
+  server = null; chars = {};
+  wakeLock?.release(); wakeLock = null;
+  setConn("disconnected");
+  log("🔌 Disconnected", "err");
+}
+
+// ---------- UI wiring ----------
+$("svc").value = localStorage.getItem("svc") || "";
+$("btnConnect").onclick = connect;
+$("btnDisconnect").onclick = () => device?.gatt?.disconnect();
+$("btnStart").onclick = () => {
+  const i = +document.querySelector("#intensity .on").dataset.i;
+  writeRocking(i, +$("dur").value, $("cont").checked, $("auto").checked);
+};
+$("btnStop").onclick = () => writeRocking(0, 0, false, false);
+$("intensity").onclick = (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  for (const x of e.currentTarget.children) x.classList.toggle("on", x === b);
+};
+$("driveBtns").onclick = (e) => { const b = e.target.closest("button"); if (b) writeDrive(+b.dataset.d); };
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && connected() && !wakeLock)
+    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
+});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+log(navigator.bluetooth ? "Ready. Tap Connect." : "⚠ navigator.bluetooth missing in this browser.", navigator.bluetooth ? "dim" : "warn");
+</script>
+</body>
+</html>
