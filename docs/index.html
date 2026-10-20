@@ -93,6 +93,8 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const AUTO_RENEW_THRESHOLD_SEC = 60;
+const bytes = (dv) => new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+const errMsg = (e) => e?.message ?? String(e ?? "unknown error");
 
 // ---------- log ----------
 function log(msg, cls = "") {
@@ -123,15 +125,16 @@ function setConn(state) {
 }
 
 function handleBattery(dv) {
-  const st = parseBattery(new Uint8Array(dv.buffer));
+  const st = parseBattery(bytes(dv));
   $("bat").textContent = `${st.percent}% (${st.mv} mV)`;
   const bucket = Math.floor(st.percent / 5) * 5;
   if (lastBatBucket !== bucket) { lastBatBucket = bucket; log(`🔋 Battery: ${st.percent}% (${st.mv} mV)`); }
 }
 
 function handleDrive(dv) {
-  const d = new Uint8Array(dv.buffer);
-  if (d.length && DRIVE_NAMES[d[0]]) {
+  const d = bytes(dv);
+  if (!d.length) return;
+  if (DRIVE_NAMES[d[0]]) {
     $("drive").textContent = DRIVE_NAMES[d[0]];
     for (const b of document.querySelectorAll("#driveBtns button")) b.classList.toggle("on", +b.dataset.d === d[0]);
   }
@@ -139,7 +142,8 @@ function handleDrive(dv) {
 }
 
 function handleRocking(dv) {
-  const d = new Uint8Array(dv.buffer);
+  const d = bytes(dv);
+  if (!d.length) return;
   const st = parseRocking(d);
   if (!st) { log(`⚠ Rocking short pkt: ${hex(d)}`, "warn"); return; }
   $("rock").textContent = st.intensityName + (st.disc ? " · cont" : "");
@@ -176,8 +180,8 @@ function maybeAutoRenew(st) {
 async function writeRocking(intensity, durationMin, cont, autoRenew = false) {
   if (!connected()) { log("⚠ Not connected — command ignored", "warn"); return; }
   let cmd;
-  try { cmd = buildRockingCmd(intensity, durationMin, cont); } catch (e) { log(`⚠ ${e.message}`, "err"); return; }
-  try { await chars.rocking.writeValue(cmd); } catch (e) { log(`[ERROR] write rocking: ${e.message}`, "err"); return; }
+  try { cmd = buildRockingCmd(intensity, durationMin, cont); } catch (e) { log(`⚠ ${errMsg(e)}`, "err"); return; }
+  try { await chars.rocking.writeValue(cmd); } catch (e) { log(`[ERROR] write rocking: ${errMsg(e)}`, "err"); return; }
   setRenew(autoRenew && intensity ? [intensity, durationMin, cont] : null);
   log(intensity === 0 ? `⏹ Rocking stopped  hex=${hex(cmd)}`
     : `🌀 Rocking: ${INTENSITY_NAMES[intensity]} ${durationMin} min cont=${cont}${autoRenew ? " auto-renew" : ""}  hex=${hex(cmd)}`);
@@ -186,7 +190,7 @@ async function writeRocking(intensity, durationMin, cont, autoRenew = false) {
 async function writeDrive(level) {
   if (!connected()) { log("⚠ Not connected — command ignored", "warn"); return; }
   const cmd = buildDriveCmd(level);
-  try { await chars.drive.writeValue(cmd); } catch (e) { log(`[ERROR] write drive: ${e.message}`, "err"); return; }
+  try { await chars.drive.writeValue(cmd); } catch (e) { log(`[ERROR] write drive: ${errMsg(e)}`, "err"); return; }
   log(`🚗 Drive: ${DRIVE_NAMES[level]}  hex=${hex(cmd)}`);
 }
 
@@ -235,12 +239,12 @@ async function connect() {
     log("📡 Subscribed to notifications");
     // Notify fires only on change; read once so the panel fills in now.
     for (const [ch, h, label] of [[chars.status, handleBattery, "STATUS"], [chars.drive, handleDrive, "DRIVE"], [chars.rocking, handleRocking, "ROCKING"]]) {
-      try { h(await ch.readValue()); } catch (e) { log(`⚠ initial read ${label} failed: ${e.message}`, "warn"); }
+      try { h(await ch.readValue()); } catch (e) { log(`⚠ initial read ${label} failed: ${errMsg(e)}`, "warn"); }
     }
     setConn("connected");
     try { wakeLock = await navigator.wakeLock?.request("screen"); } catch { /* optional */ }
   } catch (e) {
-    log(`[ERROR] ${e.message}`, "err");
+    log(`[ERROR] ${errMsg(e)}`, "err");
     try { device?.gatt?.disconnect(); } catch {}
     server = null; setConn("disconnected");
   }

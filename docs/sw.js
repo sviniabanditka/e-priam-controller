@@ -1,5 +1,5 @@
 // Minimal service worker: makes the page installable and loads offline.
-const CACHE = "epriam-v1";
+const CACHE = "epriam-v2";
 const FILES = ["./", "./index.html", "./priam_ble.js", "./manifest.json", "./icon.svg"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES))));
 self.addEventListener("activate", (e) => e.waitUntil(
