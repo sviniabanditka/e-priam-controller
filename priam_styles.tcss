@@ -2,39 +2,81 @@ Screen {
     layout: vertical;
 }
 
-#main {
-    layout: horizontal;
-    height: 1fr;
+Header {
+    background: $primary;
+    color: $text;
 }
 
-#left {
-    width: 40%;
-    min-width: 36;
-    border-right: solid $primary;
+#main {
+    layout: vertical;
+    height: 1fr;
     padding: 0 1;
 }
 
 #status_panel {
+    width: 1fr;
     height: auto;
     border: round $primary;
     padding: 0 1;
     margin-bottom: 1;
+}
+
+#status_grid {
+    grid-size: 4;
+    grid-columns: 11 1fr 11 1fr;
+    grid-gutter: 0 2;
+    height: auto;
+}
+
+#status_grid.narrow {
+    grid-size: 2;
+    grid-columns: 11 1fr;
+}
+
+.status_key {
+    color: $text-muted;
+    height: 1;
+}
+
+.status_val {
+    height: 1;
+    text-overflow: ellipsis;
+}
+
+#bottom {
+    layout: horizontal;
+    height: 1fr;
 }
 
 #controls_panel {
+    width: 34;
     height: auto;
     border: round $primary;
     padding: 0 1;
+    margin-right: 1;
 }
 
-.section_title {
-    text-style: bold;
+#keys_grid {
+    grid-size: 2;
+    grid-columns: 4 1fr;
+    height: auto;
+}
+
+.key {
     color: $accent;
-    margin-bottom: 1;
+    text-style: bold;
+    height: 1;
 }
 
-.status_line {
+.key_desc {
+    color: $text;
     height: 1;
+}
+
+.panel_hint {
+    color: $text-muted;
+    height: auto;
+    padding-top: 1;
 }
 
 #log_panel {
@@ -44,22 +86,116 @@ Screen {
     height: 1fr;
 }
 
+Footer {
+    background: $panel;
+}
+
+/* ---------- dialogs ---------- */
+
 ModalScreen {
     align: center middle;
 }
 
 #dialog {
-    width: 60;
+    width: 68;
+    max-width: 96%;
     height: auto;
+    max-height: 92%;
     padding: 1 2;
     background: $surface;
     border: thick $primary;
 }
 
-#dialog_title {
+.dialog_title {
     text-style: bold;
     color: $accent;
+}
+
+.dialog_note {
+    color: $text-muted;
     margin-bottom: 1;
+    height: auto;
+}
+
+.field_label {
+    color: $text-muted;
+    text-style: bold;
+    width: auto;
+    margin-right: 1;
+    height: 1;
+}
+
+.field_value {
+    color: $accent;
+    text-style: bold;
+    width: auto;
+    margin-right: 1;
+    height: 1;
+}
+
+.field_eta {
+    color: $text-muted;
+    width: 1fr;
+    text-align: right;
+    height: 1;
+}
+
+.field_row {
+    height: 1;
+    margin-top: 1;
+}
+
+.dialog_rule {
+    margin: 0;
+    color: $primary;
+    height: 1;
+}
+
+#intensity {
+    layout: horizontal;
+    height: auto;
+    margin-bottom: 1;
+    border: none;
+    background: transparent;
+    padding: 0;
+}
+
+#intensity RadioButton {
+    margin-right: 2;
+    background: transparent;
+    width: auto;
+}
+
+#duration_slider {
+    margin-bottom: 1;
+}
+
+.duration_row {
+    height: auto;
+    align: left middle;
+}
+
+#duration {
+    width: 9;
+    margin-right: 1;
+}
+
+.unit {
+    color: $text-muted;
+    margin-right: 2;
+    height: 3;
+    content-align: left middle;
+}
+
+Button.preset {
+    min-width: 6;
+    height: 3;
+    margin-right: 1;
+    background: $panel;
+}
+
+Button.preset:hover {
+    background: $primary;
 }
 
 #dialog_buttons {
@@ -70,4 +206,14 @@ ModalScreen {
 
 #dialog_buttons Button {
     margin-left: 1;
+    min-width: 10;
+}
+
+.hint {
+    height: 1;
+    color: $text-muted;
+}
+
+.hint.error {
+    color: $error;
 }

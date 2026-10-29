@@ -80,6 +80,7 @@ class PriamClient:
                 self._obs.on_status(ConnectionStatus.DISCONNECTED)
                 return
 
+            self._notify_device(device.name or "?")
             self._obs.on_log(
                 f"📡 Connecting to {device.name or '?'} ({device.address})..."
             )
@@ -108,6 +109,12 @@ class PriamClient:
             self._obs.on_status(ConnectionStatus.DISCONNECTED)
         finally:
             self._bleak = None
+
+    def _notify_device(self, name: str) -> None:
+        # Optional observer hook; older observers without it still work.
+        notify = getattr(self._obs, "on_device", None)
+        if notify is not None:
+            notify(name)
 
     def _reset_diff_state(self) -> None:
         self._last_battery_bucket: Optional[int] = None

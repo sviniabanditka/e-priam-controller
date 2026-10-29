@@ -18,9 +18,10 @@ errors) without touching the official mobile app.
 
 - **Split-screen TUI**: live status on the left, scrollable event log on
   the right. No more notification spam clobbering your input.
-- **Rocking control**: pick intensity (HIGH / MED / LOW / OFF), set
-  duration in **minutes** (1–500), toggle "continue on disconnect" and
-  "auto-renew" (see below).
+- **Gauges**: battery and session timer as text bars, with the session
+  end time in the local clock.
+- **Rocking control**: intensity picker plus a 30–500 min slider
+  (keyboard steps, page jumps, click-to-set) with quick presets.
 - **Auto-renew**: optional toggle that re-issues the rocking command
   when the timer drops to ≤1 minute, effectively making the rocking
   session run forever (until you stop it or the BLE link drops with
@@ -87,6 +88,16 @@ everything with [Textual](https://textual.textualize.io/).
 ```bash
 git clone https://github.com/<you>/python-priam.git
 cd python-priam
+./run.sh
+```
+
+`run.sh` does the boring part: it picks a Python 3.9+ interpreter, creates
+`.venv`, installs the dependencies, and only reinstalls them when
+`requirements.txt` changes. Then it starts the TUI.
+
+Prefer doing it by hand:
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate         # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -99,7 +110,7 @@ The two runtime dependencies are `bleak` (BLE) and `textual` (TUI).
 ## Quick start
 
 ```bash
-python3 main.py
+./run.sh            # or: .venv/bin/python main.py
 ```
 
 The TUI launches, scans for the stroller for ~15 seconds, and connects
@@ -116,7 +127,10 @@ automatically. From there:
 ### Rocking dialog
 
 - **Intensity** — `HIGH` / `MED` / `LOW` / `OFF`
-- **Duration** — in minutes, 1 to 500 (see FAQ for why 500)
+- **Duration** — slider from 30 to 500 minutes in 10-minute steps.
+  Type an exact value in the box next to it, or hit a preset
+  (`30` / `60` / `120` / `240` / `500`). The dialog shows the resulting
+  end time, and arrow keys / PgUp / PgDn / click move the slider.
 - **Continue on disconnect** — if checked, rocking keeps running after
   the BLE link drops
 - **Auto-renew** — if checked, the controller re-sends the same
@@ -124,6 +138,9 @@ automatically. From there:
   effectively never ends. Auto-renew is automatically cancelled if you
   hit Stop or if the firmware reports `intensity = OFF` for any other
   reason.
+
+Picking `OFF` disables the duration controls, since the stop command
+ignores them.
 
 ### Drive dialog
 
@@ -152,7 +169,7 @@ priam_client.py     # PriamClient — owns the BleakClient, runs the notify pump
                     # parses frames, diff-logs state changes, exposes
                     # write_rocking / stop_rocking / write_drive. Talks to UI
                     # via the PriamObserver Protocol.
-priam_tui.py        # PriamApp + StatusPanel + ControlsPanel + RockingScreen +
+priam_tui.py        # PriamApp + StatusPanel + ControlsPanel + Slider + RockingScreen +
                     # DriveScreen. Implements PriamObserver: events from the
                     # client land in reactive state and the RichLog.
 priam_styles.tcss   # Textual CSS (split layout, modal dialogs, status lines).
